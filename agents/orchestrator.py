@@ -1,20 +1,14 @@
 import uuid
 from graph.state import AgentState
-from tools.sql_tools import read_from_db
-from tools.web_tools import web_search
-from tools.chart_tools import generate_chart
-from tools.file_tools import parse_document
-from memory.short_term import ShortTermMemory
-from memory.long_term import write_persistent_memory
+from agents.ingestion_agent import ingest_input
+from agents.db_query_agent import query_database
+from agents.web_agent import fetch_live_data
+from agents.validation_agent import validate_data
+from agents.risk_agent import assess_risk
 from agents.audit_agent import log_event
 
 
-def run_baseline_agent(user_query: str, input_type: str = "text") -> AgentState:
-    """
-    Single-agent baseline.
-    This function owns the entire flow end-to-end.
-    """
-
+def run_multi_agent_system(user_query: str, input_type: str = "text") -> AgentState:
     run_id = str(uuid.uuid4())
 
     state: AgentState = {
@@ -33,53 +27,44 @@ def run_baseline_agent(user_query: str, input_type: str = "text") -> AgentState:
         "escalation_required": False
     }
 
-    memory = ShortTermMemory(run_id)
-    memory.add("user_query", user_query)
-
     log_event(run_id, "orchestrator", "start", {"query": user_query}, {})
 
-    # ---- Step 1: Detect need for live data
-    if any(keyword in user_query.lower() for keyword in ["latest", "current", "today", "exchange rate"]):
+    # ---- INGESTION
+    extracted_data = ingest_input(run_id, user_query, input_type)
+    state["extracted"] = True
+
+    # ---- LIVE DATA CHECK
+    if extracted_data.get("needs_live_data"):
         state["requires_live_data"] = True
-
-    # ---- Step 2: Web search if needed
-    if state["requires_live_data"]:
-        web_result = web_search(user_query)
-        memory.add("web_result", web_result)
+        web_data = fetch_live_data(run_id, extracted_data)
         state["web_verified"] = True
-
-        log_event(run_id, "orchestrator", "web_search", {"query": user_query}, web_result)
-
-    # ---- Step 3: Database lookup
-    if "vendor" in user_query.lower() or "invoice" in user_query.lower():
-        db_result = read_from_db("SELECT * FROM invoices LIMIT 5;")
-        memory.add("db_result", db_result)
-        state["db_verified"] = True
-
-        log_event(run_id, "orchestrator", "db_read", {}, db_result)
-
-    # ---- Step 4: Simple decision logic
-    if state["db_verified"] and state["web_verified"]:
-        state["decision"] = "approve"
-        state["confidence_score"] = 0.85
-    elif state["db_verified"]:
-        state["decision"] = "escalate"
-        state["confidence_score"] = 0.55
-        state["escalation_required"] = True
     else:
-        state["decision"] = "reject"
-        state["confidence_score"] = 0.30
+        web_data = None
+
+    # ---- DATABASE QUERY
+    db_data = query_database(run_id, extracted_data)
+    state["db_verified"] = True
+
+    # ---- VALIDATION
+    validated = validate_data(run_id, extracted_data, db_data, web_data)
+
+    # ---- RISK ASSESSMENT
+    decision, confidence, escalate = assess_risk(run_id, validated)
+
+    state["decision"] = decision
+    state["confidence_score"] = confidence
+    state["escalation_required"] = escalate
 
     log_event(
         run_id,
         "orchestrator",
-        "decision",
+        "final_decision",
         {},
         {
-            "decision": state["decision"],
-            "confidence": state["confidence_score"]
+            "decision": decision,
+            "confidence": confidence,
+            "escalation": escalate
         }
     )
 
     return state
-
