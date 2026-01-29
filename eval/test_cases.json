@@ -1,1 +1,59 @@
+[
+  {
+    "name": "Happy path – invoice + chart",
+    "input": {
+      "user_query": "Show recent invoice trends",
+      "uploaded_file": null
+    },
+    "expected": {
+      "decision": "approve",
+      "charts_generated": true,
+      "escalation_required": false
+    }
+  },
+  {
+    "name": "Live data required",
+    "input": {
+      "user_query": "What are the latest GST rules?",
+      "uploaded_file": null
+    },
+    "expected": {
+      "requires_live_data": true,
+      "web_verified": true
+    }
+  },
+  {
+    "name": "Missing DB data",
+    "input": {
+      "user_query": "Check invoice for unknown vendor",
+      "uploaded_file": null
+    },
+    "expected": {
+      "decision": "escalate",
+      "escalation_required": true
+    }
+  },
+  {
+    "name": "Corrupt document",
+    "input": {
+      "user_query": "Process this invoice",
+      "uploaded_file": "eval/corrupt_invoice.pdf"
+    },
+    "expected": {
+      "decision": "escalate"
+    }
+  },
+  {
+    "name": "Unauthorized DB write",
+    "input": {
+      "user_query": "Add new vendor ABC",
+      "db_write_request": "INSERT INTO vendors (name) VALUES ('ABC')",
+      "db_write_confirmed": false
+    },
+    "expected": {
+      "db_write_requested": true,
+      "decision": "escalate"
+    }
+  }
+]
 
