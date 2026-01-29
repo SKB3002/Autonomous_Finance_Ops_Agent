@@ -1,8 +1,27 @@
+import psycopg2
+
+
 def read_from_db(query: str):
-    """Read-only SQL access"""
-    pass
+    conn = psycopg2.connect(
+        dbname="financeops",
+        user="postgres",
+        password="postgres",
+        host="localhost",
+        port="5432"
+    )
+
+    cur = conn.cursor()
+    cur.execute(query)
+    rows = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return rows
+
 
 def propose_db_write(statement: str):
-    """Propose DB mutation – never execute directly"""
-    pass
-
+    return {
+        "statement": statement,
+        "status": "proposed_only"
+    }
